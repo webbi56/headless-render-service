@@ -4,7 +4,7 @@
 // Endpoint: http://localhost:3000/render?url=https%3A%2F%2Fexample.com
 
 const express = require('express');
-const { chromium } = require('playwright');
+const { firefox } = require('playwright');
 
 const PORT = process.env.HEADLESS_PORT || 3000;
 const app = express();
@@ -14,7 +14,7 @@ let browser;
 // Hilfsfunktion: Browser einmal starten und wiederverwenden
 async function getBrowser() {
   if (browser) return browser;
-  browser = await chromium.launch({
+  browser = await firefox.launch({
     headless: true,
   });
   return browser;
