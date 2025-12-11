@@ -1,98 +1,96 @@
-// headless-server.js
-// Einfacher Headless-Browser-Service für FakeShopFinder
-// Start: node headless-server.js
-// Endpoint: http://localhost:3000/render?url=https%3A%2F%2Fexample.com
+// headless-server.js (WebKit-Version für Render Free) 
+// Zuverlässiger Headless-Browser für FakeShopFinder ohne Browser-Pfad-Probleme.
 
 const express = require('express');
-const { firefox } = require('playwright');
+const { webkit } = require('playwright');
 
 const PORT = process.env.HEADLESS_PORT || 3000;
 const app = express();
 
 let browser;
 
-// Hilfsfunktion: Browser einmal starten und wiederverwenden
+// Browser dauerhaft offen halten (spart Ressourcen & Zeit)
 async function getBrowser() {
   if (browser) return browser;
-  browser = await firefox.launch({
+  browser = await webkit.launch({
     headless: true,
   });
   return browser;
 }
 
-// Versucht, typische Cookie-/Consent-Banner automatisch zu akzeptieren
+// Cookie- / Consent-Banner automatisch versuchen zu schließen
 async function tryHandleCookieBanner(page) {
-  const buttonTexts = [
+  const texts = [
     'akzeptieren',
     'zustimmen',
     'einverstanden',
     'alle akzeptieren',
     'accept',
     'agree',
-    'allow all',
+    'allow all'
   ];
 
-  for (const text of buttonTexts) {
-    const button = await page.$(`button:has-text("${text}")`);
-    if (button) {
+  for (const t of texts) {
+    const btn = await page.$(`button:has-text("${t}")`);
+    if (btn) {
       try {
-        await button.click({ timeout: 2000 });
-        await page.waitForTimeout(1500);
+        await btn.click();
+        await page.waitForTimeout(1000);
         break;
       } catch (e) {
-        // Ignorieren, wir versuchen einfach den nächsten Text
+        // ignorieren und nächste Option versuchen
       }
     }
   }
 }
 
+// Haupt-Endpoint zum Rendern von Webseiten
 app.get('/render', async (req, res) => {
   const targetUrl = req.query.url;
 
   if (!targetUrl || typeof targetUrl !== 'string') {
-    return res.status(400).json({ error: 'Missing "url" query parameter' });
+    return res.status(400).json({ error: 'Missing ?url= parameter' });
   }
 
   try {
     const browser = await getBrowser();
     const context = await browser.newContext({
-      userAgent: 'FakeShopFinder-Headless/1.0',
+      userAgent: 'FakeShopFinder-Headless/1.0'
     });
+
     const page = await context.newPage();
 
     await page.goto(targetUrl, {
       waitUntil: 'networkidle',
-      timeout: 30000,
+      timeout: 30000
     });
 
-    // Optional: Cookie-Banner versuchen zu schließen/akzeptieren
     await tryHandleCookieBanner(page);
-
-    // Noch einmal kurz warten, damit dynamische Inhalte nachladen können
-    await page.waitForTimeout(1500);
+    await page.waitForTimeout(1000);
 
     const html = await page.content();
 
     await context.close();
 
     res.set('Content-Type', 'text/html; charset=utf-8');
-    return res.status(200).send(html);
+    return res.send(html);
+
   } catch (err) {
     console.error('Headless render failed:', err);
-    return res
-      .status(500)
-      .json({ error: 'Headless render failed', details: String(err) });
+    return res.status(500).json({
+      error: 'Headless render failed',
+      details: String(err)
+    });
   }
 });
 
+// Sauberes Herunterfahren
 process.on('SIGINT', async () => {
-  console.log('Shutting down headless server...');
-  if (browser) {
-    await browser.close();
-  }
+  console.log('Shutting down WebKit headless server...');
+  if (browser) await browser.close();
   process.exit(0);
 });
 
 app.listen(PORT, () => {
-  console.log(`Headless render server listening on http://localhost:${PORT}`);
+  console.log(`WebKit render server running on http://localhost:${PORT}`);
 });
