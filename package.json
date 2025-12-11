@@ -1,0 +1,13 @@
+{
+  "name": "headless-render-service",
+  "version": "1.0.0",
+  "main": "headless-server.js",
+  "license": "MIT",
+  "scripts": {
+    "start": "node headless-server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "playwright": "^1.42.0"
+  }
+}
