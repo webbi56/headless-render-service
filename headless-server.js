@@ -1,30 +1,44 @@
-// headless-server.js – Render-Free-kompatible WebKit-Version
-// Installiert WebKit im Runtime-Container, damit Render es nicht löscht.
+// headless-server.js – final WebKit-Version für Render Free
+// Installiert WebKit im Runtime-Container und stellt die Routen / und /render bereit.
 
 const express = require('express');
 const { execSync } = require('child_process');
 const { webkit } = require('playwright');
 
-const PORT = process.env.HEADLESS_PORT || 3000;
+// Render stellt den Port über process.env.PORT bereit
+const PORT = process.env.PORT || 3000;
 const app = express();
 
 let browser;
 
-// WebKit im Runtime installieren, falls Render es gelöscht hat
+// Root-Route für Health-Checks und schnelle Prüfung im Browser
+app.get('/', (req, res) => {
+  res.send('Headless Render Service is running ✔️');
+});
+
+// Stellt sicher, dass WebKit im Laufzeit-Container installiert ist
 function ensureWebkitInstalled() {
   try {
-    console.log('Checking WebKit installation...');
+    console.log('Checking Playwright WebKit installation...');
+    // Einfacher Check: gibt es irgendeinen ms-playwright-Ordner?
     execSync('ls /opt/render/.cache/ms-playwright', { stdio: 'ignore' });
-  } catch {
-    console.log('WebKit missing → Installing now...');
-    execSync('npx playwright install webkit', { stdio: 'inherit' });
+    console.log('Playwright cache directory exists.');
+  } catch (e) {
+    console.log('Playwright WebKit seems missing – installing now...');
+    try {
+      execSync('npx playwright install webkit', { stdio: 'inherit' });
+      console.log('Playwright WebKit install completed.');
+    } catch (installErr) {
+      console.error('Playwright WebKit install failed:', installErr);
+    }
   }
 }
 
+// Browser einmal starten und wiederverwenden
 async function getBrowser() {
   if (browser) return browser;
 
-  // Sicherstellen, dass WebKit existiert
+  // Sicherstellen, dass WebKit vorhanden ist
   ensureWebkitInstalled();
 
   browser = await webkit.launch({
@@ -34,10 +48,16 @@ async function getBrowser() {
   return browser;
 }
 
+// Cookie- / Consent-Banner automatisch versuchen zu schließen
 async function tryHandleCookieBanner(page) {
   const texts = [
-    'akzeptieren', 'zustimmen', 'einverstanden',
-    'alle akzeptieren', 'accept', 'agree', 'allow all'
+    'akzeptieren',
+    'zustimmen',
+    'einverstanden',
+    'alle akzeptieren',
+    'accept',
+    'agree',
+    'allow all',
   ];
 
   for (const t of texts) {
@@ -47,26 +67,33 @@ async function tryHandleCookieBanner(page) {
         await btn.click();
         await page.waitForTimeout(1000);
         break;
-      } catch {}
+      } catch (e) {
+        // ignorieren und nächste Option versuchen
+      }
     }
   }
 }
 
+// Haupt-Endpoint zum Rendern von Webseiten
 app.get('/render', async (req, res) => {
   const targetUrl = req.query.url;
 
-  if (!targetUrl) {
+  if (!targetUrl || typeof targetUrl !== 'string') {
     return res.status(400).json({ error: 'Missing ?url= parameter' });
   }
 
   try {
     const browser = await getBrowser();
     const context = await browser.newContext({
-      userAgent: 'FakeShopFinder-Headless/1.0'
+      userAgent: 'FakeShopFinder-Headless/1.0',
     });
 
     const page = await context.newPage();
-    await page.goto(targetUrl, { waitUntil: 'networkidle', timeout: 30000 });
+
+    await page.goto(targetUrl, {
+      waitUntil: 'networkidle',
+      timeout: 30000,
+    });
 
     await tryHandleCookieBanner(page);
     await page.waitForTimeout(1000);
@@ -74,18 +101,19 @@ app.get('/render', async (req, res) => {
     const html = await page.content();
 
     await context.close();
+
     res.set('Content-Type', 'text/html; charset=utf-8');
     return res.send(html);
-
   } catch (err) {
     console.error('Headless render failed:', err);
     return res.status(500).json({
       error: 'Headless render failed',
-      details: String(err)
+      details: String(err),
     });
   }
 });
 
+// Sauberes Herunterfahren
 process.on('SIGINT', async () => {
   console.log('Shutting down WebKit headless server...');
   if (browser) await browser.close();
@@ -93,5 +121,5 @@ process.on('SIGINT', async () => {
 });
 
 app.listen(PORT, () => {
-  console.log(`WebKit render server running on http://localhost:${PORT}`);
+  console.log(`Headless WebKit server running on port ${PORT}`);
 });
